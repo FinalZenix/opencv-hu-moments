@@ -1,5 +1,3 @@
-Here's your README written in markdown language for your GitHub library:
-
 ```markdown
 # Hu Moment Detection
 
@@ -85,10 +83,3 @@ video_processor.process_video(hu_calculator, hu_moments_h, hu_moments_s, hu_mome
 ## Contributing
 
 Contributions are welcome! Please open issues or pull requests for suggestions or improvements.
-
-## License
-
-This project is licensed under the MIT License. See the `LICENSE` file for more details.
-```
-
-Feel free to adjust the GitHub links and any project-specific details! Let me know if you'd like any further tweaks.
