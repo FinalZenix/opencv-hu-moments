@@ -1,4 +1,3 @@
-```markdown
 # Hu Moment Detection
 
 This project implements letter detection based on Hu moments using OpenCV. It compares pre-calculated Hu moments with test images or video frames to identify the letter present in the image.
