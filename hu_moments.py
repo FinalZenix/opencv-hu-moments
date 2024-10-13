@@ -7,15 +7,6 @@ from PIL import Image
 class PrecalculatedHuLoader:
     @staticmethod
     def load_hu_moments_from_json(filename):
-        """
-        Load Hu moments from a JSON file.
-
-        Args:
-            filename (str): The path to the JSON file containing pre-calculated Hu moments.
-
-        Returns:
-            dict: A dictionary containing the Hu moments.
-        """
         with open(filename, 'r') as json_file:
             return json.load(json_file)
 
@@ -23,14 +14,19 @@ class HuMomentCalculator:
     @staticmethod
     def calculate_hu_moments(image):
         """
-        Calculate and return the Hu moments for a given image.
+        Calculate the Hu moments for a given binary image.
 
-        Args:
-            image (numpy.ndarray): The input image for which to calculate Hu moments.
+        Parameters
+        ----------
+        image : numpy array
+            The input binary image.
 
-        Returns:
-            numpy.ndarray: The calculated Hu moments, or None if no contours are found.
+        Returns
+        -------
+        hu_moments_log : numpy array
+            The calculated Hu moments in log scale as a 1D numpy array.
         """
+
         _, binary_image = cv2.threshold(image, 128, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -38,39 +34,28 @@ class HuMomentCalculator:
         letter_contour = max(contours, key=cv2.contourArea)
         moments = cv2.moments(letter_contour)
         hu_moments = cv2.HuMoments(moments)
-        return -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
+        hu_moments_log = -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
+        return hu_moments_log.flatten()
 
     @staticmethod
-    def calculate_similarity(base_hu, test_hu):
-        """
-        Calculate the similarity between two sets of Hu moments.
-
-        Args:
-            base_hu (numpy.ndarray): The base Hu moments to compare against.
-            test_hu (numpy.ndarray): The Hu moments of the test image.
-
-        Returns:
-            float: The similarity percentage between the base and test Hu moments.
-        """
-        return np.mean([
+    def calculate_similarity_metric(base_hu, test_hu):
+        similarities = [
             max((1 - abs(base - test) / abs(base)) * 100, 0)
             for base, test in zip(base_hu, test_hu)
-        ])
+        ]
+        return np.mean(similarities)
+
+    @staticmethod
+    def compare_with_precalculated_hu(test_hu, hu_moments_data):
+        results = {}
+        for base_image_path, base_hu in hu_moments_data.items():
+            similarity = HuMomentCalculator.calculate_similarity_metric(np.array(base_hu), test_hu)
+            results[base_image_path] = similarity
+        return results
 
 class LetterEstimator:
     @staticmethod
     def estimate_letter(results_h, results_s, results_u):
-        """
-        Estimate the detected letter based on the maximum similarity results.
-
-        Args:
-            results_h (dict): The similarity results for letter 'H'.
-            results_s (dict): The similarity results for letter 'S'.
-            results_u (dict): The similarity results for letter 'U'.
-
-        Returns:
-            str: The detected letter ('H', 'S', 'U', or 'None' if no valid letter is detected).
-        """
         max_h = max(results_h.values(), default=0)
         max_s = max(results_s.values(), default=0)
         max_u = max(results_u.values(), default=0)
@@ -86,19 +71,6 @@ class LetterEstimator:
 class FrameProcessor:
     @staticmethod
     def process_frame(frame, hu_calculator, hu_moments_h, hu_moments_s, hu_moments_u):
-        """
-        Process a single video frame for letter detection.
-
-        Args:
-            frame (numpy.ndarray): The input video frame.
-            hu_calculator (HuMomentCalculator): The calculator instance for computing Hu moments.
-            hu_moments_h (numpy.ndarray): Pre-calculated Hu moments for letter 'H'.
-            hu_moments_s (numpy.ndarray): Pre-calculated Hu moments for letter 'S'.
-            hu_moments_u (numpy.ndarray): Pre-calculated Hu moments for letter 'U'.
-
-        Returns:
-            numpy.ndarray: The Hu moments of the detected letter in the frame, or None if not detected.
-        """
         exposure_factor = 2.5
         frame_exposed = cv2.convertScaleAbs(frame, alpha=exposure_factor, beta=0)
         frame_gray = cv2.cvtColor(frame_exposed, cv2.COLOR_BGR2GRAY)
@@ -119,60 +91,68 @@ class FrameProcessor:
             print("No valid contour detected.")
             return None
 
-        return test_hu
+        results_h = hu_calculator.compare_with_precalculated_hu(test_hu, hu_moments_h)
+        results_s = hu_calculator.compare_with_precalculated_hu(test_hu, hu_moments_s)
+        results_u = hu_calculator.compare_with_precalculated_hu(test_hu, hu_moments_u)
+
+        detected_letter = LetterEstimator.estimate_letter(results_h, results_s, results_u)
+        return detected_letter
 
 class VideoProcessor:
     def __init__(self, video_url):
-        """
-        Initialize the VideoProcessor with the video URL.
-
-        Args:
-            video_url (str): The URL or file path of the video to process.
-        """
         self.video_url = video_url
         self.cap = cv2.VideoCapture(self.video_url)
 
     def process_video(self, hu_calculator, hu_moments_h, hu_moments_s, hu_moments_u):
-        """
-        Capture and process each frame from the video for letter detection.
+        # Get the frame rate of the video
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        cycle_rate = 0  # Initialize cycle rate
+        frame_count = 0
+        start_time = time.time()
 
-        Args:
-            hu_calculator (HuMomentCalculator): The calculator instance for computing Hu moments.
-            hu_moments_h (numpy.ndarray): Pre-calculated Hu moments for letter 'H'.
-            hu_moments_s (numpy.ndarray): Pre-calculated Hu moments for letter 'S'.
-            hu_moments_u (numpy.ndarray): Pre-calculated Hu moments for letter 'U'.
-        """
         while True:
             ret, frame = self.cap.read()
             if not ret:
                 print("Failed to capture frame.")
                 break
 
-            test_hu = FrameProcessor.process_frame(frame, hu_calculator, hu_moments_h, hu_moments_s, hu_moments_u)
-            if test_hu is None:
-                continue
+            start_frame_time = time.time()  # Start time for frame processing
+            detected_letter = FrameProcessor.process_frame(frame, hu_calculator, hu_moments_h, hu_moments_s, hu_moments_u)
+            if detected_letter:
+                print(f"Detected Letter: {detected_letter}")
 
-            results_h = hu_calculator.calculate_similarity(hu_moments_h, test_hu)
-            results_s = hu_calculator.calculate_similarity(hu_moments_s, test_hu)
-            results_u = hu_calculator.calculate_similarity(hu_moments_u, test_hu)
+            frame_count += 1
+            elapsed_time = time.time() - start_time
 
-            detected_letter = LetterEstimator.estimate_letter(results_h, results_s, results_u)
-            print(f"Detected Letter: {detected_letter}")
+            # Calculate cycle rate every second
+            if elapsed_time >= 1:  # Update every second
+                cycle_rate = frame_count / elapsed_time
+                print(f"Cycle Rate: {cycle_rate:.2f} CPS")  # Log cycle rate
+                # Reset for next second
+                start_time = time.time()
+                frame_count = 0
+
+            # Display frame rate and cycle rate
+            display_text = f"FPS: {fps:.2f} | Cycle Rate: {cycle_rate:.2f} CPS"
+            cv2.putText(frame, display_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
             cv2.imshow('Video Frame', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
+            # Update processing time for cycle rate calculation
+            processing_time = time.time() - start_frame_time
+            print(f"Processing Time: {processing_time:.4f} seconds")  # Optional: Print processing time for each frame
+
         self.cap.release()
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    # Example usage
     hu_loader = PrecalculatedHuLoader()
     hu_moments_h = hu_loader.load_hu_moments_from_json('hu_moments_h.json')
     hu_moments_s = hu_loader.load_hu_moments_from_json('hu_moments_s.json')
     hu_moments_u = hu_loader.load_hu_moments_from_json('hu_moments_u.json')
 
     hu_calculator = HuMomentCalculator()
-    video_processor = VideoProcessor("http://192.168.2.219:8080/video")
+    video_processor = VideoProcessor("./video.mp4")
     video_processor.process_video(hu_calculator, hu_moments_h, hu_moments_s, hu_moments_u)
