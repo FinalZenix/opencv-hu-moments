@@ -1,2 +1,3 @@
 #test video
-video.mp4
+*.mp4
+/dataset
