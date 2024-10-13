@@ -1,7 +1,3 @@
-Here is the full `README.md` file including all the changes and additional instructions for the new features:
-
----
-
 # Hu Moment Detection from Video Streams
 
 This project processes video frames to detect letters based on their Hu moments. Hu moments are scale, rotation, and translation invariant properties used to uniquely identify shapes. In this project, Hu moments are calculated for letters "H", "S", and "U" for real-time detection in video streams.
