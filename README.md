@@ -11,7 +11,7 @@ This is not a professional project, but rather a personal research effort to exp
 - **Input Video from Drive**: Load videos directly from your computer for processing.
 - **IP Webcam Support**: Stream video from your IP webcam by installing an app such as "IP Webcam" from the Android Play Store and use the URL (e.g., `http://<ip>:8080/video`) to feed the video stream into the program.
 - **Extended Control Feature**: This mode allows you to move back and forth between frames using keyboard controls, pause the video, and manually control the playback.
-- **Pre-calculated Hu Moments**: The program compares the real-time frame data with pre-calculated Hu moments for accurate and efficient letter detection.
+- **Pre-calculated Hu Moments**: The program compares the real-time frame data with pre-calculated Hu moments for efficient letter detection.
 
 ## Requirements
 
